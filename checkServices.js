@@ -1,7 +1,9 @@
 const axios = require("axios")
 const pino = require('pino')
 const TelegramBot = require('node-telegram-bot-api');
-
+const  { NodeSSH }  =  require ( 'node-ssh' );
+const { connection } = require("mongoose");
+const ssh = new NodeSSH()
 
 
 
@@ -19,31 +21,65 @@ const exampleUser = {
     lastName:'Иванов'
 }
 
-
+// modelSsh = {
+//       host: 'ip',
+//       port: 22,
+//       username: 'root',
+//       password: '123',
+//       readyTimeout: 5000
+// }
 const services=[
     {
         name: "formit",
         url: "https://formit.fake",
         errCount:0,
-        example : exampleUser
+        example : exampleUser,
+        ssh:{
+            host: 'ip',
+            port: 22,
+            username: 'root',
+            password: '123',
+            readyTimeout: 5000
+        }
     },
     {
         name: "datavalidator",
         url: "https://datavalidator.fake",
         errCount:0,
-        example : 'formit'
+        example : 'formit',
+        ssh:{
+            host: 'ip',
+            port: 22,
+            username: 'root',
+            password: '123',
+            readyTimeout: 5000
+        }
     },
     {
         name: "leadsynk",
         url: "https://leadsynk.fake",
         errCount:0,
-        example : 'datavalidator'
+        example : 'datavalidator',
+        ssh:{
+            host: 'ip',
+            port: 22,
+            username: 'root',
+            password: '123',
+            readyTimeout: 5000
+        }
     },
     {
         name: "bitdashboard",
         url: "https://bitdashboard.fake",
         errCount:0,
-        example : 'datavalidator'
+        example : 'datavalidator',
+        ssh:{
+            host: 'ip',
+            port: 22,
+            username: 'root',
+            password: '123',
+            readyTimeout: 5000
+        }
     },
 ]
 
@@ -105,8 +141,45 @@ const startCheck = async () =>{
     if  (services[i].errCount>2){
         services[i].errCount=0
         bot.sendMessage(infoChatId, `Произошла ошибка в сервисе ${services[i].name}, код ошибки ${response}`)
+        let reboot = await rebootSsh(services[i])
+        if (reboot == true){
+            response = await checkServices(services[i].url,services[i].example)
+            if (Math.floor(response/100)!=2)
+                bot.sendMessage(infoChatId, `Перезагрузка сервиса ${services[i].name} не помогла, примите меры`)
+            else{
+                errCount = 0
+                bot.sendMessage(infoChatId, `После перезагрузки сервис ${services[i].name} работает корректно`)
+            }
+        }
     }
         
 }
 }
+// Если при проверке сервиса ошибка всплывет 3 и больше раз,
+// поступит уведомление с кодом ошибки, после чего мы попытаемся перезагрузить
+// сервис, если после перезагрузки сервис отвечает стабильно, то счетчик ошибок обнуляется.
+// Если перезагрузка не получилась или перезагрузка не поможет, отправится уведомление.
+// Функцию rebootSsh я сделал С ИСПОЛЬЗОВАНИЕМ НЕЙРОСЕТИ, ОНА УКАЗАЛА НА МОИ ОШИБКИ, тк я 
+// неправильно понял использование некоторых функций.
+// ТЗ делал без нейросети
+
+const rebootSsh = async (service)=> {
+  try {
+    await ssh.connect(service.ssh);
+
+    const result = await ssh.execCommand('sudo reboot', {
+      stdin: `${service.ssh.password}\n`});
+
+    bot.sendMessage(infoChatId, `Сервис ${service.name} успешно перезагружен`)
+    return true
+  } catch (error) {
+    console.log(error.message);
+    bot.sendMessage(infoChatId, `Не удалось перезагрузить ${service.name}, ошибка: \n ${error}`)
+    return false
+  } finally {
+    ssh.dispose();
+  }
+}
+
+
 checking = setInterval(startCheck, 5*60*1000)
